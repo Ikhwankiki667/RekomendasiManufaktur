@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ide__executeCode",
+      "Bash(rtk ls:*)",
+      "Bash(rtk pip:*)",
+      "Bash(find models/ -type f -exec ls -lh {} \\\\;)",
+      "Bash(python:*)",
+      "Bash(find models/ -name \"*sparse*\" -exec ls -lh {} \\\\;)"
+    ]
+  }
+}
