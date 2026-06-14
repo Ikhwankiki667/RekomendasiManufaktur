@@ -1,0 +1,369 @@
+================================================================
+  SISTEM REKOMENDASI PRODUK MANUFAKTUR
+  Dokumen Penjelasan Lengkap Proyek
+================================================================
+
+================================================================
+1. LATAR BELAKANG & MASALAH
+================================================================
+
+Di dunia industri manufaktur, seorang buyer (pembeli/klien) seringkali
+harus memilih produk yang tepat dari ribuan pilihan yang tersedia.
+Tanpa panduan yang relevan, buyer bisa salah pilih, membuang waktu,
+atau melewatkan produk yang sebenarnya paling cocok untuk kebutuhannya.
+
+Masalah utama:
+- Katalog produk industri sangat banyak (ribuan item)
+- Buyer kesulitan menemukan produk yang relevan dengan kebutuhannya
+- Tidak ada personalisasi -- semua buyer dapat informasi yang sama
+- Perusahaan kehilangan potensi penjualan karena rekomendasi tidak tepat
+
+Analogi mudah:
+Bayangkan kamu belanja di Tokopedia. Tanpa fitur "Produk yang mungkin
+kamu suka" -- kamu harus scroll ribuan produk sendiri. Sistem rekomendasi
+adalah solusi untuk masalah itu, dan proyek ini membangunnya untuk
+konteks industri manufaktur.
+
+
+================================================================
+2. TUJUAN PROYEK
+================================================================
+
+TUJUAN UTAMA:
+Membangun sistem yang secara otomatis merekomendasikan produk manufaktur
+yang relevan kepada buyer, berdasarkan riwayat pembelian dan kemiripan
+produk, lalu menampilkannya dalam dashboard interaktif berbasis Streamlit.
+
+TUJUAN SPESIFIK:
+1. Membangun model rekomendasi menggunakan 3 algoritma (CF, CBF, SVD)
+   yang digabung menjadi satu sistem Hybrid Filtering.
+2. Menghasilkan rekomendasi Top-N produk untuk setiap buyer.
+3. Mengevaluasi performa model dengan metrik yang terukur (RMSE,
+   Precision@K, Recall@K).
+4. Menampilkan hasil rekomendasi dalam dashboard Streamlit yang
+   interaktif dan mudah digunakan.
+
+GOAL AKHIR YANG DINILAI DOSEN:
+- Model berjalan dengan benar dan ada angka evaluasi yang valid
+- Dashboard Streamlit bisa dioperasikan: input buyer -> keluar rekomendasi
+- Ada visualisasi yang informatif (chart, tabel, heatmap)
+- Bukan sekadar analisis di notebook -- harus ada output yang bisa dipakai
+
+
+================================================================
+3. DATASET YANG DIGUNAKAN
+================================================================
+
+DATASET UTAMA: Online Retail II (UCI Machine Learning Repository)
+- Sumber UCI    : https://archive.ics.uci.edu/dataset/502/online+retail+ii
+- Sumber Kaggle : https://www.kaggle.com/datasets/mashlyn/online-retail-ii-uci
+- Format        : Excel (.xlsx), gratis diunduh (butuh akun Kaggle)
+- Ukuran        : 541.000+ baris transaksi
+- Periode       : 2009-2011, retailer industri dari UK
+
+CATATAN:
+Dataset di UCI dan Kaggle adalah dataset yang sama persis.
+Pilih salah satu yang paling mudah diakses.
+Kaggle biasanya lebih cepat download, UCI tidak butuh login.
+
+KOLOM-KOLOM PENTING:
+  InvoiceNo   -- Nomor transaksi (unik per pembelian)
+  StockCode   -- Kode produk (ID produk, yang jadi item rekomendasi)
+  Description -- Nama/deskripsi produk (dipakai untuk Content-Based)
+  Quantity    -- Jumlah yang dibeli (jadi bobot interaksi)
+  InvoiceDate -- Tanggal transaksi
+  UnitPrice   -- Harga satuan
+  CustomerID  -- ID buyer/pelanggan (ini yang jadi "user" di sistem)
+  Country     -- Negara asal buyer
+
+KENAPA DATASET INI?
+Dataset ini ideal karena:
+1. Punya CustomerID -> bisa dipakai untuk Collaborative Filtering
+2. Punya Description produk -> bisa dipakai untuk Content-Based Filtering
+3. Jumlah transaksi besar -> cukup untuk training model yang valid
+4. Konteks industri manufaktur/retail yang relevan dengan studi kasus
+
+YANG DILAKUKAN DENGAN DATA INI:
+- CustomerID x StockCode dijadikan User-Item Matrix
+  (baris = buyer, kolom = produk, nilai = jumlah beli / rating implisit)
+- Description produk dijadikan fitur teks untuk TF-IDF (Content-Based)
+- Quantity x UnitPrice dijadikan proxy "rating" karena tidak ada rating eksplisit
+
+
+================================================================
+4. ALGORITMA YANG DIGUNAKAN
+================================================================
+
+Proyek ini menggunakan pendekatan HYBRID FILTERING, yaitu menggabungkan
+tiga algoritma sekaligus agar kelemahan satu algoritma ditutupi yang lain.
+
+------------------------------------------------------------
+4a. COLLABORATIVE FILTERING (CF) -- User-Based
+------------------------------------------------------------
+Prinsip kerja:
+"Buyer yang punya pola pembelian mirip denganmu, biasanya juga suka
+produk yang sama."
+
+Cara kerja teknis:
+1. Buat User-Item Matrix dari data transaksi
+2. Hitung cosine similarity antar semua pasangan buyer
+3. Untuk buyer target, temukan K buyer paling mirip (nearest neighbors)
+4. Rekomendasikan produk yang sering dibeli buyer-buyer mirip itu
+   tapi belum pernah dibeli buyer target
+
+Kelebihan : Tidak butuh informasi detail tentang produk
+Kelemahan : Tidak bisa rekomendasikan ke buyer baru (cold start problem)
+
+------------------------------------------------------------
+4b. CONTENT-BASED FILTERING (CBF)
+------------------------------------------------------------
+Prinsip kerja:
+"Rekomendasikan produk yang atributnya mirip dengan produk yang
+sudah pernah kamu beli."
+
+Cara kerja teknis:
+1. Ambil kolom Description dari semua produk
+2. Ubah teks deskripsi menjadi vektor angka pakai TF-IDF
+3. Hitung cosine similarity antar semua pasangan produk
+4. Untuk produk yang pernah dibeli buyer, cari produk lain
+   yang paling mirip berdasarkan skor similarity
+
+Kelebihan : Tidak terpengaruh cold start user baru, bisa jelaskan alasan
+Kelemahan : Hanya rekomendasikan produk yang "mirip", kurang eksplorasi
+
+------------------------------------------------------------
+4c. MATRIX FACTORIZATION -- SVD (Singular Value Decomposition)
+------------------------------------------------------------
+Prinsip kerja:
+"Temukan pola tersembunyi (latent factors) dari User-Item Matrix
+untuk memprediksi produk mana yang kemungkinan besar akan disukai buyer."
+
+Cara kerja teknis:
+1. Dekomposisi User-Item Matrix menjadi faktor laten (U, Sigma, Vt)
+2. Gunakan library Surprise untuk training model SVD
+3. Model memprediksi "rating" untuk semua produk yang belum dibeli
+4. Urutkan prediksi dari tertinggi -> produk teratas jadi rekomendasi
+
+Library: scikit-surprise (pip install scikit-surprise)
+Kelebihan : Akurasi prediksi paling tinggi, menangkap pola kompleks
+Kelemahan : Butuh data yang cukup banyak, kurang interpretable
+
+------------------------------------------------------------
+4d. HYBRID FILTERING (Output Akhir)
+------------------------------------------------------------
+Cara kerja:
+Skor akhir = gabungan weighted dari ketiga algoritma di atas
+
+Rumus:
+  Score_final = α × CF_score + β × CBF_score + γ × SVD_score
+
+Nilai awal bobot yang disarankan:
+  α (CF)  = 0.4
+  β (CBF) = 0.3
+  γ (SVD) = 0.3
+
+Bobot ini bisa diatur secara interaktif lewat slider di dashboard Streamlit.
+
+Kenapa hybrid lebih baik?
+  - CF bagus untuk buyer lama dengan riwayat beli cukup
+  - CBF bagus untuk produk baru yang belum banyak dibeli
+  - SVD bagus untuk akurasi prediksi secara keseluruhan
+  - Digabung -> menutupi kelemahan masing-masing
+
+
+================================================================
+5. SETUP & STRUKTUR PROYEK
+================================================================
+
+STRUKTUR FOLDER:
+
+recommendation-system/
+|
+|-- data/
+|   |-- online_retail_II.xlsx        <- dataset mentah yang diunduh
+|   `-- products_cleaned.csv         <- hasil preprocessing, siap pakai
+|
+|-- notebooks/
+|   |-- 01_EDA.ipynb                 <- eksplorasi & pemahaman data
+|   |-- 02_preprocessing.ipynb       <- cleaning, encoding, buat matrix
+|   |-- 03_collaborative_filtering.ipynb  <- bangun & uji model CF
+|   |-- 04_content_based.ipynb       <- bangun & uji model CBF
+|   |-- 05_svd_matrix_factorization.ipynb <- bangun & uji model SVD
+|   `-- 06_hybrid_evaluation.ipynb   <- gabungkan semua, evaluasi akhir
+|
+|-- models/
+|   |-- svd_model.pkl                <- model SVD yang sudah di-train
+|   `-- tfidf_matrix.pkl             <- matrix TF-IDF produk
+|
+|-- app.py                           <- dashboard Streamlit (file utama)
+|-- recommender.py                   <- semua logika algoritma (otak sistem)
+`-- requirements.txt                 <- daftar library yang dibutuhkan
+
+------------------------------------------------------------
+TECH STACK (Library yang Dipakai):
+------------------------------------------------------------
+
+Library              Fungsi
+-------------------------------------------------------------
+Python 3.9+          Bahasa pemrograman utama
+pandas               Manipulasi data dan dataframe
+numpy                Operasi matematika & matrix
+scikit-learn         TF-IDF, cosine similarity, KNN, PCA
+scikit-surprise      SVD Matrix Factorization & evaluasi RMSE
+streamlit            Dashboard interaktif berbasis web
+plotly               Chart interaktif (bar chart, scatter, heatmap)
+openpyxl             Membaca file Excel (.xlsx)
+
+Instalasi semua library:
+  pip install streamlit scikit-surprise scikit-learn pandas plotly openpyxl
+
+------------------------------------------------------------
+CARA MENJALANKAN:
+------------------------------------------------------------
+
+1. Download dataset dari UCI (link di bagian 3)
+2. Simpan di folder data/
+3. Jalankan notebook 01 sampai 06 secara berurutan
+4. Jalankan dashboard:
+     streamlit run app.py
+5. Buka browser -> http://localhost:8501
+
+
+================================================================
+6. ALUR KERJA LENGKAP (PIPELINE)
+================================================================
+
+TAHAP 1 -- PERSIAPAN DATA (Notebook 01 & 02)
+  - Download dataset Online Retail II
+  - Eksplorasi data: cek missing values, distribusi, outlier
+  - Hapus transaksi yang CustomerID-nya kosong
+  - Hapus transaksi dengan Quantity negatif (retur)
+  - Buat User-Item Matrix: baris=CustomerID, kolom=StockCode,
+    nilai=total Quantity yang dibeli (sebagai proxy rating)
+  - Simpan ke products_cleaned.csv
+
+TAHAP 2 -- BANGUN MODEL CF (Notebook 03)
+  - Load User-Item Matrix
+  - Hitung cosine similarity antar buyer
+  - Fungsi: get_cf_recommendations(customer_id, top_n=10)
+  - Output: list StockCode dengan skor similarity
+
+TAHAP 3 -- BANGUN MODEL CBF (Notebook 04)
+  - Load kolom Description produk
+  - Bersihkan teks (lowercase, hapus stopwords)
+  - Terapkan TF-IDF Vectorizer
+  - Hitung cosine similarity antar produk
+  - Fungsi: get_cbf_recommendations(product_id, top_n=10)
+  - Output: list StockCode dengan skor similarity
+
+TAHAP 4 -- BANGUN MODEL SVD (Notebook 05)
+  - Format data ke format Surprise (user, item, rating)
+  - Split train/test (80/20)
+  - Training SVD model
+  - Evaluasi: hitung RMSE pada test set
+  - Simpan model ke svd_model.pkl
+  - Fungsi: get_svd_recommendations(customer_id, top_n=10)
+
+TAHAP 5 -- HYBRID & EVALUASI (Notebook 06)
+  - Gabungkan skor CF + CBF + SVD dengan bobot
+  - Evaluasi hybrid: Precision@10, Recall@10
+  - Bandingkan performa antar algoritma
+  - Tentukan bobot optimal
+
+TAHAP 6 -- DASHBOARD STREAMLIT (app.py)
+  - Tampilan input: pilih CustomerID
+  - Slider bobot CF, CBF, SVD
+  - Tombol "Generate Recommendations"
+  - Output: tabel Top-10 produk rekomendasi
+  - Visualisasi: bar chart skor, riwayat pembelian buyer
+
+
+================================================================
+7. FITUR DASHBOARD STREAMLIT
+================================================================
+
+Halaman dashboard terdiri dari:
+
+SIDEBAR (panel kiri):
+  - Dropdown pilih CustomerID
+  - Slider bobot algoritma:
+      CF weight  : [0.0 -- 1.0]
+      CBF weight : [0.0 -- 1.0]
+      SVD weight : [0.0 -- 1.0]
+  - Tombol "Generate Recommendations"
+
+PANEL UTAMA (bagian kanan):
+  1. Riwayat Pembelian Buyer
+     -> Tabel produk yang pernah dibeli customer yang dipilih
+
+  2. Top-10 Produk Rekomendasi
+     -> Tabel berisi: StockCode, Nama Produk, Hybrid Score,
+        CF Score, CBF Score, SVD Score
+
+  3. Bar Chart Skor Rekomendasi
+     -> Visualisasi perbandingan skor tiap produk rekomendasi
+
+  4. Heatmap Similarity Produk
+     -> Visualisasi kemiripan antar produk yang direkomendasikan
+
+  5. Metrik Evaluasi Model
+     -> RMSE (SVD), Precision@10, Recall@10 per algoritma
+
+
+================================================================
+8. METRIK EVALUASI
+================================================================
+
+Untuk membuktikan bahwa sistem bekerja dengan baik, digunakan
+metrik-metrik berikut:
+
+RMSE (Root Mean Square Error) -- untuk SVD
+  - Mengukur seberapa jauh prediksi rating dari nilai aslinya
+  - Semakin kecil RMSE, semakin akurat model
+  - Target: RMSE < 1.0
+
+Precision@K
+  - Dari K produk yang direkomendasikan, berapa % yang benar-benar
+    relevan (pernah dibeli di test set)?
+  - Rumus: jumlah rekomendasi relevan / K
+  - Target: Precision@10 > 0.3
+
+Recall@K
+  - Dari semua produk relevan di test set, berapa % yang berhasil
+    masuk ke dalam K rekomendasi?
+  - Rumus: jumlah rekomendasi relevan / total produk relevan
+  - Target: Recall@10 > 0.1
+
+Coverage
+  - Berapa % dari total produk yang pernah direkomendasikan?
+  - Mengukur seberapa beragam rekomendasi sistem
+
+
+================================================================
+9. RINGKASAN SINGKAT (TL;DR)
+================================================================
+
+PROYEK INI ADALAH:
+Sistem rekomendasi produk manufaktur yang menjawab pertanyaan:
+"Produk apa yang sebaiknya dibeli buyer ini selanjutnya?"
+
+DATA YANG DIPAKAI:
+541.000 transaksi dari Online Retail II (UCI) -- gratis, langsung pakai
+
+CARA KERJANYA:
+3 algoritma (CF + CBF + SVD) digabung jadi Hybrid Score
+
+OUTPUT AKHIR:
+Dashboard Streamlit yang bisa dipakai dosen/siapapun untuk
+pilih buyer -> lihat rekomendasi produk + visualisasi
+
+YANG DINILAI:
+1. Model jalan dan ada angka evaluasi (RMSE, Precision@K)
+2. Dashboard interaktif dan visualisasi informatif
+3. Kode rapi, terstruktur, dan terdokumentasi di notebook
+
+
+================================================================
+  Dokumen ini dibuat sebagai panduan pengerjaan tugas
+  Sistem Rekomendasi -- Kasus Industri Manufaktur
+================================================================
